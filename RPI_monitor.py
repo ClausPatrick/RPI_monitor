@@ -152,7 +152,7 @@ class Session():
                 self.json_output(self.uptime_dict_actual)
                 logging.info(f'Overwriting Uptime data in file heart_beat_logs at {os.getcwd()}')
 
-
+#some comment
 if __name__ == "__main__":
     s = Session()
     s.check()
