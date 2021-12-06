@@ -9,6 +9,8 @@ import logging
 
 logging.basicConfig(filename='RPI_heartbeat.log',  level=logging.DEBUG, format='%(asctime)s %(levelname)s %(funcName)s:%(lineno)d %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
 
+
+
 class Session():
     def __init__(self):
         self.hostname = self.who_am_i()
@@ -40,8 +42,8 @@ class Session():
             #print(f'actual_uptime {actual_uptime}')
             conn = '0'
             if actual_uptime:
-                conn = '1'
-            self.uptime_dict_actual[str(ix)] = {'name' : host, 'ip' : ip, 'uptime' : actual_uptime, 'connection' : conn}
+                conn = '1' # uptime_dict_actual will be logged later on should this run for the furst time.
+            self.uptime_dict_actual[str(ix)] = {'name' : host, 'ip' : ip, 'uptime' : actual_uptime, 'connected' : conn, 'error_count' : '0', 'total_error' : '0', 'reboot_count' : '0'}
 
 
         try:
@@ -108,35 +110,45 @@ class Session():
                 host_ix = str(host_ixi)
                 prev = self.uptime_dict_previous[host_ix]['uptime']
                 actu = self.uptime_dict_actual[host_ix]['uptime']
-                was_up = int(self.uptime_dict_previous[host_ix]['connection'])
+                was_up = int(self.uptime_dict_previous[host_ix]['connected'])
+                current_error_count = int(self.uptime_dict_previous[host_ix]['error_count'])
                 #print(f'Previous uptime: {prev}, Actual uptime: {actu}')
                 if actu == 0:
                     print(f"Link dead for {host_ixi}: {self.uptime_dict_actual[host_ix]['name']}@{self.uptime_dict_actual[host_ix]['ip']}")
                     logging.warning(f"Link dead for {host_ixi}: {self.uptime_dict_actual[host_ix]['name']}@{self.uptime_dict_actual[host_ix]['ip']}")
+                    current_error_count += 1
+                    self.uptime_dict_actual[host_ix]['error_count'] = current_error_count
+                    overwrite_required = True
+                    self.uptime_dict_actual[host_ix]['uptime'] = prev
+                    self.uptime_dict_actual[host_ix]['connected'] = '0'
                     
                     if was_up:
                         now = self.get_timestamp()
-                        overwrite_required = True
-                        self.uptime_dict_actual[host_ix]['connection'] = '0'
-                        self.uptime_dict_actual[host_ix]['uptime'] = prev
                         #print('Link was up but went down.')
                         message = f"Link was up but went down: {host_ixi}: {self.uptime_dict_actual[host_ix]['name']}@{self.uptime_dict_actual[host_ix]['ip']}"
                         logging.warning(message)
-                        hbm.notify(1, ' LINK FAILURE', now + message)
+                        hbm.notify(1, f' LINK FAILURE {self.uptime_dict_previous[host_ix]["name"]}', now + message)
 
                 else:
-                    if prev == 0 or was_up == 0:
-                        self.uptime_dict_actual[host_ix]['connection'] = '1'
+                    if prev == 0 or was_up == 0: # Link is restored.
+                        now = self.get_timestamp()
+                        total_so_far = int(self.uptime_dict_previous[host_ix]['total_error'])
+                        self.uptime_dict_actual[host_ix]['total_error'] = str(current_error_count + total_so_far)
+                        self.uptime_dict_actual[host_ix]['error_count'] = '0'
+                        self.uptime_dict_actual[host_ix]['connected'] = '1'
                         overwrite_required = True
-                        message = f"Link came back for {host_ixi}: {self.uptime_dict_previous[host_ix]['name']}@{self.uptime_dict_previous[host_ix]['ip']}"
+                        message = f"Link came back for {host_ixi}: {self.uptime_dict_previous[host_ix]['name']}@{self.uptime_dict_previous[host_ix]['ip']}, after {total_so_far} failures."
                         #print(message)
                         logging.info(message)
+                        hbm.notify(0, f'LINK RESTORED {self.uptime_dict_previous[host_ix]["name"]}', now + message)
 
                     elif actu == prev:
                         pass
                         #print('All same')
                     else:
                         now = self.get_timestamp()
+                        reboot_count_so_far = int(self.uptime_dict_previous[host_ix]['reboot_count'])
+                        self.uptime_dict_actual[host_ix]['reboot_count'] =   str(reboot_count_so_far + 1)
                         message1 = f"Uptime difference on {host_ixi}: {self.uptime_dict_previous[host_ix]['name']}@{self.uptime_dict_previous[host_ix]['ip']}. "
                         message2 = f"-Timestamps: {self.uptime_dict_previous[host_ix]['uptime']} - {self.uptime_dict_actual[host_ix]['uptime']}"
                         #print(message1)
